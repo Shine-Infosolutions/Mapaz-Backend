@@ -47,7 +47,8 @@ const app = express();
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:4000",
-  "https://mapaz-frontend.vercel.app"
+  "https://mapaz-frontend.vercel.app",
+  "https://mapaz-backend.vercel.app"
 ];
 
 app.use(
