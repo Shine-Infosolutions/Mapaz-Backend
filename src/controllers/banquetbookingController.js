@@ -31,6 +31,11 @@ exports.createBooking = async (req, res) => {
       if (bookingData[f]) bookingData[f] = Number(bookingData[f]);
     });
 
+    // Handle empty hall field - set default if empty
+    if (!bookingData.hall || bookingData.hall.trim() === '') {
+      bookingData.hall = 'Banquet Hall'; // Default hall
+    }
+
     // Ensure categorizedMenu is preserved in booking data
     if (req.body.categorizedMenu) {
       bookingData.categorizedMenu = req.body.categorizedMenu;
@@ -111,13 +116,17 @@ exports.getBookingById = async (req, res) => {
     console.log("Menu (categorizedMenu):", menu);
 
     res.status(200).json({
-      ...booking.toObject(),
-      categorizedMenuFromCollection: menu ? menu.toObject() : null
+      success: true,
+      data: {
+        ...booking.toObject(),
+        categorizedMenu: menu ? menu.categories : null
+      }
     });
   } catch (err) {
     console.error("Error fetching booking:", err.message);
     res.status(500).json({
-      message: "Server error while fetching booking",
+      success: false,
+      message: "Failed to load booking details. Please try again later",
       error: err.message,
     });
   }
@@ -162,6 +171,10 @@ exports.getBookingById = async (req, res) => {
 
 exports.updateBooking = async (req, res) => {
   try {
+    console.log("=== UPDATE BOOKING DEBUG ===");
+    console.log("Request body:", JSON.stringify(req.body, null, 2));
+    console.log("Booking ID:", req.params.id);
+    
     const updatedData = { ...req.body };
 
     // 1️⃣ Find existing booking
@@ -170,21 +183,24 @@ exports.updateBooking = async (req, res) => {
       return res.status(404).json({ message: "Booking not found" });
     }
 
-    // 2️⃣ Handle advance array
-    if (Array.isArray(updatedData.advance) && updatedData.advance.length > 0) {
-      const newAdvances = updatedData.advance.map(a => ({
+    console.log("Found booking:", booking._id);
+
+    // 2️⃣ Handle advance array - replace instead of append
+    if (Array.isArray(updatedData.advance)) {
+      booking.advance = updatedData.advance.map(a => ({
         amount: Number(a.amount) || 0,
         date: a.date ? new Date(a.date) : new Date(),
         method: a.method || "cash",
         remarks: a.remarks || "",
       }));
-      booking.advance = [...(booking.advance || []), ...newAdvances];
     }
 
     // 3️⃣ Recalculate totalAdvance + balance
     const totalAdvance = (booking.advance || []).reduce((sum, a) => sum + (a.amount || 0), 0);
     if (updatedData.total) booking.total = Number(updatedData.total);
     booking.balance = (booking.total || 0) - totalAdvance;
+
+    console.log("Calculated balance:", booking.balance);
 
     // 4️⃣ Append to statusHistory
     if (Array.isArray(updatedData.statusHistory) && updatedData.statusHistory.length > 0) {
@@ -209,32 +225,49 @@ exports.updateBooking = async (req, res) => {
           booking.mealPlan = validOptions.includes(updatedData.mealPlan)
             ? updatedData.mealPlan
             : "Without Breakfast"; // default
-        } else {
+        }
+        // ✅ Special handling for menuItems - convert array to string
+        else if (key === "menuItems") {
+          if (Array.isArray(updatedData.menuItems)) {
+            booking.menuItems = updatedData.menuItems.join(", ");
+          } else {
+            booking.menuItems = updatedData.menuItems || "";
+          }
+        }
+        else {
           booking[key] = updatedData[key];
         }
       }
     });
 
-    // 6️⃣ STAFF MENU EDIT LIMIT LOGIC
-    const role = (req.body.role || req.body.rolr || "staff").toLowerCase();
-    if (role !== "admin" && req.body.categorizedMenu) {
-      if (typeof booking.staffEditCount !== "number") booking.staffEditCount = 0;
-      if (booking.staffEditCount >= 2) {
-        return res.status(403).json({ message: "Staff menu edit limit reached for this booking." });
-      }
-      booking.staffEditCount += 1;
-    }
+    console.log("Updated booking fields");
+
+    // 6️⃣ STAFF MENU EDIT LIMIT LOGIC - DISABLED
+    // const role = (req.body.role || req.body.rolr || "staff").toLowerCase();
+    // if (role !== "admin" && req.body.categorizedMenu) {
+    //   if (typeof booking.staffEditCount !== "number") booking.staffEditCount = 0;
+    //   if (booking.staffEditCount >= 2) {
+    //     return res.status(403).json({ message: "Staff menu edit limit reached for this booking." });
+    //   }
+    //   booking.staffEditCount += 1;
+    // }
+
+    console.log("About to save booking...");
 
     // 7️⃣ Save the booking
     await booking.save();
 
+    console.log("Booking saved successfully");
+
     // 8️⃣ MENU UPDATE LOGIC
     if (updatedData.categorizedMenu && booking.customerRef) {
+      console.log("Updating menu...");
       let menu = await Menu.findOne({ bookingRef: booking._id });
       if (menu) {
         menu.categories = updatedData.categorizedMenu;
         menu.customerRef = booking.customerRef;
         await menu.save();
+        console.log("Menu updated");
       } else {
         menu = new Menu({
           categories: updatedData.categorizedMenu,
@@ -242,6 +275,7 @@ exports.updateBooking = async (req, res) => {
           customerRef: booking.customerRef
         });
         await menu.save();
+        console.log("New menu created");
       }
     }
 
@@ -252,7 +286,10 @@ exports.updateBooking = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Error updating booking:", err.message);
+    console.error("=== UPDATE BOOKING ERROR ===");
+    console.error("Error message:", err.message);
+    console.error("Error stack:", err.stack);
+    console.error("Request body:", req.body);
     res.status(500).json({
       message: "Server error while updating booking",
       error: err.message,

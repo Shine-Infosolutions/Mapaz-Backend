@@ -40,6 +40,7 @@ transactionId: {
   hall:{
     type: String,
     enum: ["Kitty Hall", "Banquet Hall", "Rooftop Hall","Flamingo Rooftop"], 
+    default: "Banquet Hall"
   },
   extraRooms: { type: Number, default: 0 },
 roomPricePerUnit: { type: Number, default: 0 },

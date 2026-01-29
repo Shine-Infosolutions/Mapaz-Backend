@@ -26,12 +26,22 @@ const auth = async (req, res, next) => {
 
 const authorize = (...roles) => {
   return (req, res, next) => {
+    console.log("=== AUTHORIZATION CHECK ===");
+    console.log("User role from req.user:", req.user?.role);
+    console.log("Required roles:", roles);
+    
     const userRole = req.user.role.toUpperCase();
     const allowedRoles = roles.flat().map(role => role.toUpperCase());
     
+    console.log("User role (uppercase):", userRole);
+    console.log("Allowed roles (uppercase):", allowedRoles);
+    
     if (!allowedRoles.includes(userRole)) {
+      console.log("❌ Authorization FAILED");
       return res.status(403).json({ error: 'Access denied. Insufficient permissions.' });
     }
+    
+    console.log("✅ Authorization PASSED");
     next();
   };
 };
