@@ -16,6 +16,8 @@ const banquetBookingRoutes = require("./src/routes/banquetBookingRoutes.js");
 const banquetCategoryRoutes = require("./src/routes/banquetCategoryRoutes.js");
 const restaurantCategoryRoutes = require("./src/routes/restaurantCategoryRoutes.js");
 const restaurantOrderRoutes = require("./src/routes/restaurantOrderRoutes.js");
+const restaurantTableRoutes = require("./src/routes/restaurantTableRoutes.js");
+const restaurantReservationRoutes = require("./src/routes/restaurantReservationRoutes.js");
 const kotRoutes = require("./src/routes/kotRoutes.js");
 
 const planLimitRoutes = require("./src/routes/planLimitRoutes.js");
@@ -36,6 +38,7 @@ const nightAuditRoutes = require("./src/routes/nightAuditRoutes.js");
 const subReportsRoutes = require("./src/routes/subReportsRoutes.js");
 const reportRoutes = require("./src/routes/reportRoutes.js");
 const housekeepingRoutes = require("./src/routes/housekeepingRoutes.js");
+const wastageRoutes = require("./src/routes/wastageRoutes.js");
 
 const { connectAuditDB } = require("./src/config/auditDatabase.js");
 const path = require("path");
@@ -133,10 +136,13 @@ app.use("/api/banquet-bookings", banquetBookingRoutes);
 app.use("/api/banquet-categories", banquetCategoryRoutes);
 app.use("/api/restaurant-categories", restaurantCategoryRoutes);
 app.use("/api/restaurant-orders", restaurantOrderRoutes);
+app.use("/api/restaurant", restaurantTableRoutes);
+app.use("/api/restaurant-reservations", restaurantReservationRoutes);
 app.use("/api/kot", kotRoutes);
 app.use("/api/plan-limits", planLimitRoutes);
 app.use("/api/room-inventory-checklists", roomInventoryChecklistRoutes);
 app.use("/api/menu-items", menuItemRoutes);
+app.use("/api/items", menuItemRoutes); // Alias for frontend compatibility
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/inventory-categories", inventoryCategoryRoutes);
 app.use("/api/vendors", vendorRoutes);
@@ -152,6 +158,7 @@ app.use("/api/night-audit", nightAuditRoutes);
 app.use("/api/sub-reports", subReportsRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/housekeeping", housekeepingRoutes);
+app.use("/api/wastage", wastageRoutes);
 
 
 // Health check endpoint

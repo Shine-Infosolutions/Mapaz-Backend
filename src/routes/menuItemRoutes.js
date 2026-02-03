@@ -11,6 +11,7 @@ const { auth, authorize } = require('../middleware/auth');
 
 // Get all menu items (All roles)
 router.get("/", auth, authorize(['ADMIN', 'GM', 'ACCOUNTS', 'STAFF', 'FRONT DESK']), getAllMenuItems);
+router.get("/all", auth, authorize(['ADMIN', 'GM', 'ACCOUNTS', 'STAFF', 'FRONT DESK']), getAllMenuItems);
 
 // Get menu by food type (All roles)
 router.get("/foodtype/:foodType", auth, authorize(['ADMIN', 'GM', 'ACCOUNTS', 'STAFF', 'FRONT DESK']), getMenuByFoodType);

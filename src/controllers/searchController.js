@@ -5,6 +5,7 @@ const Booking = require('../models/Booking');
 const Category = require('../models/Category');
 const Checkout = require('../models/Checkout');
 const Room = require('../models/Room');
+const User = require('../models/User');
 
 // Universal search across all models
 exports.universalSearch = async (req, res) => {
@@ -147,6 +148,8 @@ const searchBySpecificField = async (model, field, value, limit) => {
       return await Checkout.find(filter).limit(limit);
     case 'rooms':
       return await Room.find(filter).populate('categoryId', 'name').limit(limit);
+    case 'users':
+      return await User.find(filter).select('name email role restaurantRole').limit(limit);
     default:
       return [];
   }

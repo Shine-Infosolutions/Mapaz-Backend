@@ -204,29 +204,27 @@ bookingSchema.pre('save', async function(next) {
     const currentDate = new Date();
     const month = String(currentDate.getMonth() + 1).padStart(2, '0');
     
-    // Find all existing invoice numbers (excluding deleted)
-    const existingInvoices = await this.constructor.find({
-      deleted: { $ne: true },
-      invoiceNumber: { $exists: true, $ne: null }
-    }).select('invoiceNumber').lean();
+    let nextNumber = 1;
+    let invoiceGenerated = false;
     
-    console.log('📋 Existing invoices:', existingInvoices);
-    
-    // Extract numbers and find highest
-    let maxNumber = 0;
-    existingInvoices.forEach(invoice => {
-      const parts = invoice.invoiceNumber.split('/');
-      if (parts.length === 3) {
-        const num = parseInt(parts[2]);
-        if (num > maxNumber) maxNumber = num;
+    while (!invoiceGenerated && nextNumber <= 9999) {
+      const sequence = String(nextNumber).padStart(4, '0');
+      const proposedInvoice = `MPZ/${month}/${sequence}`;
+      
+      // Check if this invoice already exists
+      const existing = await this.constructor.findOne({ invoiceNumber: proposedInvoice });
+      if (!existing) {
+        this.invoiceNumber = proposedInvoice;
+        invoiceGenerated = true;
+        console.log('✅ Generated invoice:', this.invoiceNumber);
+      } else {
+        nextNumber++;
       }
-    });
+    }
     
-    const nextNumber = maxNumber + 1;
-    const sequence = String(nextNumber).padStart(4, '0');
-    this.invoiceNumber = `HH/${month}/${sequence}`;
-    
-    console.log('✅ Generated invoice:', this.invoiceNumber);
+    if (!invoiceGenerated) {
+      throw new Error('Could not generate unique invoice number');
+    }
   }
   
   // 🔹 Calculate Late Checkout Fine

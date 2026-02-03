@@ -56,85 +56,92 @@ exports.getDashboardStats = async (req, res) => {
         break;
     }
 
-    // Base query
-    const baseQuery = { deleted: { $ne: true }, ...dateFilter };
+    // Base query - always exclude deleted bookings
+    const baseQuery = { deleted: { $ne: true } };
+    const filteredQuery = { ...baseQuery, ...dateFilter };
 
-    // Today's date filter for check-ins/check-outs
-    const todayFilterForCheckInOut = new Date();
-    todayFilterForCheckInOut.setHours(0, 0, 0, 0);
-    const todayEndForCheckInOut = new Date();
-    todayEndForCheckInOut.setHours(23, 59, 59, 999);
-    const todayFilter = {
-      $gte: todayFilterForCheckInOut,
-      $lte: todayEndForCheckInOut
-    };
+    console.log('Dashboard query:', filteredQuery);
 
-    // Parallel queries for better performance
-    const [
-      totalBookings,
-      activeBookings,
-      cancelledBookings,
-      cashPaymentsMain,
-      upiPaymentsMain,
-      cashPaymentsAdvance,
-      upiPaymentsAdvance,
-      totalRevenue,
-      cashRevenue,
-      onlineRevenue,
-      laundryOrders,
-      restaurantOrders,
-      todayCheckIns,
-      todayCheckOuts
-    ] = await Promise.all([
-      Booking.countDocuments(baseQuery),
-      Booking.countDocuments({ ...baseQuery, status: 'Checked In' }),
-      Booking.countDocuments({ ...baseQuery, status: 'Cancelled' }),
-      Booking.countDocuments({ ...baseQuery, paymentMode: 'Cash' }),
-      Booking.countDocuments({ ...baseQuery, paymentMode: 'UPI' }),
-      Booking.countDocuments({ ...baseQuery, 'advancePayments.paymentMode': { $regex: /cash/i } }),
-      Booking.countDocuments({ ...baseQuery, 'advancePayments.paymentMode': { $regex: /upi|online|card/i } }),
-      Booking.aggregate([
-        { $match: baseQuery },
-        { $group: { _id: null, total: { $sum: '$rate' } } }
-      ]),
-      Booking.aggregate([
-        { $match: { ...baseQuery, paymentMode: 'Cash' } },
-        { $group: { _id: null, total: { $sum: '$rate' } } }
-      ]),
-      Booking.aggregate([
-        { $match: { ...baseQuery, paymentMode: 'UPI' } },
-        { $group: { _id: null, total: { $sum: '$rate' } } }
-      ]),
-      Laundry.countDocuments(baseQuery),
-      RestaurantOrder.countDocuments(dateFilter),
-      Booking.countDocuments({ deleted: { $ne: true }, status: 'Checked In', checkInDate: todayFilter }),
-      Booking.countDocuments({ deleted: { $ne: true }, status: 'Checked Out', checkOutDate: todayFilter })
+    // Get all bookings count (not filtered by date)
+    const totalBookingsCount = await Booking.countDocuments(baseQuery);
+    console.log('Total bookings (all time):', totalBookingsCount);
+
+    // Get filtered counts - use all-time for main stats
+    const [filteredBookings, activeBookings, cancelledBookings, checkedOutBookings] = await Promise.all([
+      Booking.countDocuments(filteredQuery),
+      Booking.countDocuments({ ...baseQuery, status: 'Checked In' }), // All-time active
+      Booking.countDocuments({ ...baseQuery, status: 'Cancelled' }), // All-time cancelled
+      Booking.countDocuments({ ...baseQuery, status: 'Checked Out' }) // All-time checked out
     ]);
 
-    const cashPayments = cashPaymentsMain + cashPaymentsAdvance;
-    const upiPayments = upiPaymentsMain + upiPaymentsAdvance;
+    // Calculate revenue from all bookings (not filtered by date)
+    const revenueResult = await Booking.aggregate([
+      { $match: baseQuery }, // All-time revenue
+      { $group: { _id: null, total: { $sum: '$rate' } } }
+    ]);
+    const totalRevenue = revenueResult[0]?.total || 0;
+
+    // Payment counts from all bookings
+    const [cashPayments, upiPayments, cardPayments] = await Promise.all([
+      Booking.countDocuments({ ...baseQuery, paymentMode: 'Cash' }),
+      Booking.countDocuments({ ...baseQuery, paymentMode: 'UPI' }),
+      Booking.countDocuments({ ...baseQuery, paymentMode: { $in: ['Card', 'Online', 'Debit Card', 'Credit Card'] } })
+    ]);
+
+    // Count bookings with advance payments
+    const advanceCashPayments = await Booking.countDocuments({ 
+      ...baseQuery, 
+      'advancePayments.paymentMode': { $regex: /cash/i } 
+    });
+    const advanceOnlinePayments = await Booking.countDocuments({ 
+      ...baseQuery, 
+      'advancePayments.paymentMode': { $regex: /upi|online|card/i } 
+    });
+
+    // Today's check-ins/check-outs
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+    
+    const [todayCheckIns, todayCheckOuts] = await Promise.all([
+      Booking.countDocuments({ 
+        deleted: { $ne: true }, 
+        status: 'Checked In', 
+        actualCheckInTime: { $gte: todayStart, $lte: todayEnd }
+      }),
+      Booking.countDocuments({ 
+        deleted: { $ne: true }, 
+        status: 'Checked Out', 
+        actualCheckOutTime: { $gte: todayStart, $lte: todayEnd }
+      })
+    ]);
+
+    const stats = {
+      totalBookings: totalBookingsCount, // All-time total
+      activeBookings, // All-time active (Checked In)
+      cancelledBookings, // All-time cancelled
+      checkedOutBookings, // All-time checked out
+      payments: {
+        cash: cashPayments + advanceCashPayments,
+        upi: upiPayments + cardPayments + advanceOnlinePayments,
+        other: Math.max(0, totalBookingsCount - (cashPayments + upiPayments + cardPayments + advanceCashPayments + advanceOnlinePayments))
+      },
+      totalRevenue, // All-time revenue
+      todayCheckIns,
+      todayCheckOuts,
+      restaurantOrders: 0, // Will be populated by separate API
+      laundryOrders: 0 // Will be populated by separate API
+    };
+
+    console.log('Dashboard stats:', stats);
 
     res.json({
       success: true,
-      stats: {
-        totalBookings,
-        activeBookings,
-        cancelledBookings,
-        payments: {
-          cash: cashPayments,
-          upi: upiPayments,
-          other: totalBookings - cashPayments - upiPayments
-        },
-        totalRevenue: totalRevenue[0]?.total || 0,
-        cashRevenue: cashRevenue[0]?.total || 0,
-        onlineRevenue: onlineRevenue[0]?.total || 0,
-        laundryOrders,
-        restaurantOrders,
-        todayCheckIns,
-        todayCheckOuts
-      }
+      stats
     });
   } catch (error) {
+    console.error('Dashboard stats error:', error);
     res.status(500).json({ error: error.message });
   }
 };

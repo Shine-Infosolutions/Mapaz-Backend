@@ -107,8 +107,25 @@ const restaurantOrderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'confirmed', 'preparing', 'ready', 'served', 'paid', 'cancelled'],
+    enum: ['pending', 'confirmed', 'preparing', 'ready', 'served', 'paid', 'cancelled', 'completed'],
     default: 'pending'
+  },
+  priority: {
+    type: String,
+    enum: ['low', 'normal', 'high', 'urgent'],
+    default: 'normal'
+  },
+  assignedChef: {
+    type: String,
+    default: ''
+  },
+  estimatedTime: {
+    type: Number,
+    default: 0
+  },
+  kotCount: {
+    type: Number,
+    default: 1
   },
   paymentStatus: {
     type: String,

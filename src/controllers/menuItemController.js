@@ -3,8 +3,13 @@ const MenuItem = require("../models/MenuItem");
 // Get all menu items
 exports.getAllMenuItems = async (req, res) => {
   try {
-    const { foodType, category } = req.query;
-    let filter = { isActive: true };
+    const { foodType, category, activeOnly } = req.query;
+    let filter = {};
+    
+    // Only filter by isActive if explicitly requested
+    if (activeOnly === 'true') {
+      filter.isActive = true;
+    }
     
     if (foodType) {
       filter.foodType = { $in: [foodType, "Both"] };
@@ -12,7 +17,9 @@ exports.getAllMenuItems = async (req, res) => {
     if (category) filter.category = category;
     
     const items = await MenuItem.find(filter).sort({ category: 1, name: 1 });
-    res.json({ success: true, menuItems: items, data: items });
+    
+    // Return in multiple formats for compatibility
+    res.json(items); // Direct array for frontend compatibility
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -69,7 +76,7 @@ exports.deleteMenuItem = async (req, res) => {
   try {
     const { id } = req.params;
   
-    const menuItem = await MenuItem.findByIdAndUpdate(id, { isActive: false }, { new: true });
+    const menuItem = await MenuItem.findByIdAndDelete(id);
     if (!menuItem) {
       return res.status(404).json({ success: false, message: "Menu item not found" });
     }

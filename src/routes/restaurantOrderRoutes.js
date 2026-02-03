@@ -15,6 +15,12 @@ router.patch('/:id/status', auth, authorize(['ADMIN', 'GM', 'ACCOUNTS', 'STAFF',
 // Update restaurant order (All roles)
 router.patch('/:id', auth, authorize(['ADMIN', 'GM', 'ACCOUNTS', 'STAFF', 'FRONT DESK']), restaurantOrderController.updateOrder);
 
+// Delete restaurant order (Admin only)
+router.delete('/:id', auth, authorize(['ADMIN']), restaurantOrderController.deleteOrder);
+
+// Assign chef to order
+router.patch('/:id/assign-chef', auth, authorize(['ADMIN', 'GM', 'ACCOUNTS', 'STAFF', 'FRONT DESK']), restaurantOrderController.assignChef);
+
 // Link existing orders to bookings (Admin, GM)
 router.post('/link-to-bookings', auth, authorize(['ADMIN', 'GM', 'FRONT DESK']), restaurantOrderController.linkOrdersToBookings);
 

@@ -5,6 +5,24 @@ exports.createOrder = async (req, res) => {
   try {
     const orderData = req.body;
     
+    // Auto-update table status to 'occupied' when booking is created
+    if (orderData.tableNo) {
+      try {
+        const Table = require('../models/Table');
+        await Table.findOneAndUpdate(
+          { tableNumber: orderData.tableNo },
+          { status: 'occupied' },
+          { new: true }
+        );
+        console.log(`Table ${orderData.tableNo} status updated to occupied`);
+      } catch (tableError) {
+        console.error('Error updating table status:', tableError);
+      }
+    }
+    
+    // Add booking timestamp
+    orderData.bookedAt = new Date();
+    
     // Try to link order to booking if tableNo matches a room number
     if (orderData.tableNo) {
       const Booking = require('../models/Booking');
@@ -36,12 +54,21 @@ exports.getAllOrders = async (req, res) => {
   try {
     const orders = await RestaurantOrder.find()
       .sort({ createdAt: -1 })
-      .populate('items.itemId', 'name price')
+      .populate('items.itemId', 'name Price')
       .populate('bookingId', 'grcNo roomNumber guestName invoiceNumber')
       .maxTimeMS(5000)
       .lean()
       .exec();
-    res.json(orders);
+    
+    // Transform orders to match frontend expectations
+    const transformedOrders = orders.map(order => ({
+      ...order,
+      allKotItems: order.items || [],
+      kotCount: 1,
+      priority: order.priority || 'normal'
+    }));
+    
+    res.json(transformedOrders);
   } catch (error) {
     if (error.name === 'MongooseError' && error.message.includes('buffering timed out')) {
       res.status(408).json({ error: 'Database query timeout. Please try again.' });
@@ -50,7 +77,6 @@ exports.getAllOrders = async (req, res) => {
     }
   }
 };
-
 // Update order status
 exports.updateOrderStatus = async (req, res) => {
   try {
@@ -67,17 +93,30 @@ exports.updateOrderStatus = async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
     
-    // Socket.IO removed - no real-time updates
-    // const io = req.app.get('io');
-    // if (io) {
-    //   io.emit('order-status-update', {
-    //     orderId: order._id,
-    //     status: order.status,
-    //     tableNo: order.tableNo,
-    //     customerName: order.customerName,
-    //     timestamp: new Date().toISOString()
-    //   });
-    // }
+    // Auto-update table status when order is completed/cancelled/paid
+    if (order.tableNo && ['completed', 'cancelled', 'paid'].includes(status)) {
+      try {
+        const Table = require('../models/Table');
+        // Check if there are any other active orders for this table
+        const activeOrders = await RestaurantOrder.find({
+          tableNo: order.tableNo,
+          status: { $nin: ['completed', 'cancelled', 'paid'] },
+          _id: { $ne: id }
+        });
+        
+        // If no other active orders, mark table as available
+        if (activeOrders.length === 0) {
+          await Table.findOneAndUpdate(
+            { tableNumber: order.tableNo },
+            { status: 'available' },
+            { new: true }
+          );
+          console.log(`Table ${order.tableNo} status updated to available`);
+        }
+      } catch (tableError) {
+        console.error('Error updating table status:', tableError);
+      }
+    }
     
     res.json(order);
   } catch (error) {
@@ -169,6 +208,57 @@ exports.linkOrdersToBookings = async (req, res) => {
       linkedCount,
       totalUnlinked: unlinkedOrders.length
     });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Delete restaurant order
+exports.deleteOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const order = await RestaurantOrder.findByIdAndDelete(id);
+    
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    
+    // Also delete corresponding KOT if it exists
+    try {
+      const KOT = require('../models/KOT');
+      await KOT.deleteOne({ orderId: id });
+    } catch (kotError) {
+      console.error('Error deleting KOT:', kotError);
+    }
+    
+    res.json({ message: 'Order deleted successfully', deletedOrder: order });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Assign chef to order
+exports.assignChef = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { assignedChef, estimatedTime } = req.body;
+    
+    const order = await RestaurantOrder.findByIdAndUpdate(
+      id,
+      { 
+        assignedChef,
+        estimatedTime,
+        status: 'confirmed'
+      },
+      { new: true }
+    );
+    
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    
+    res.json(order);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
